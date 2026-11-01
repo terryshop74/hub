@@ -1,0 +1,29 @@
+name: Pubblica su Hostinger
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  pubblica:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepara la chiave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_hub
+          chmod 600 ~/.ssh/id_hub
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copia i file sul server
+        run: |
+          rsync -az --delete \
+            --exclude '.git/' --exclude '.github/' --exclude 'config.php' \
+            -e "ssh -i ~/.ssh/id_hub -p ${{ secrets.SSH_PORT }}" \
+            ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.DEPLOY_PATH }}/"
+
+      - name: Controlla che l'hub risponda
+        run: curl -fsS https://hub.terryshop74.it/api/stato

@@ -1,0 +1,10 @@
+Options -Indexes
+
+# Blocca l'accesso diretto a configurazione, codice interno e file di servizio
+RewriteEngine On
+RewriteRule ^(src|\.github)(/|$) - [F,L]
+RewriteRule ^(config\.php|config\.example\.php|README\.md|\.gitignore)$ - [F,L]
+
+# Tutto il resto passa da index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [L]
