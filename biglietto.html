@@ -38,6 +38,7 @@
   .pulsanti button { flex:1; padding:14px; border:0; border-radius:14px; font-size:16px; font-weight:700;
                      color:#fff; cursor:pointer; }
   .wa { background:#25D366; } .sms { background:var(--indaco); }
+  .nota { background:#FEF3C7; color:#78350F; border-radius:14px; padding:12px 14px; font-size:15px; margin-bottom:8px; }
   footer { margin-top:28px; text-align:center; font-size:13px; color:#6b6880; }
   footer a { color:var(--indaco); }
   .errore { text-align:center; padding:60px 20px; font-size:18px; }
@@ -55,7 +56,8 @@
     msg: "Ciao, sono {n}. Il mio numero è {t}. Ci siamo scambiati il biglietto da visita 👋",
     errore: "Biglietto non leggibile: chiedi di riavvicinare il telefono o di mostrarti il QR code.",
     privacy: "I dati sono contenuti nel link: questa pagina non li salva.",
-    creato: "Biglietto creato con", manca: "Scrivi nome e numero"
+    creato: "Biglietto creato con", manca: "Scrivi nome e numero",
+    android: "📥 Se non si apre da solo, tocca «Apri» sul file scaricato (oppure aprilo dai Download): la rubrica ti chiede dove salvare il contatto."
   } : {
     salva: "💾 Add to contacts", ricambia: "🤝 Swap back",
     ricambia_t: "Leave your name and number: a ready-made message opens, to send to ",
@@ -63,7 +65,8 @@
     msg: "Hi, I'm {n}. My number is {t}. We just swapped business cards 👋",
     errore: "Card not readable: ask to tap the phone again or to show you the QR code.",
     privacy: "The details are inside the link: this page does not store them.",
-    creato: "Card made with", manca: "Type your name and number"
+    creato: "Card made with", manca: "Type your name and number",
+    android: "📥 If it does not open by itself, tap «Open» on the downloaded file (or open it from Downloads): your contacts app asks where to save it."
   };
   var pagina = document.getElementById("pagina");
 
@@ -119,18 +122,19 @@
   // Aggiungi ai contatti
   var salva = el("button", { "class": "salva" }, T.salva);
   salva.onclick = function () {
-    var nomeFile = (c.nome || "contatto").replace(/[^\w\- ]+/g, "").trim() || "contatto";
-    if (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) {
-      // Su iPhone Safari apre direttamente la scheda "Nuovo contatto".
-      location.href = "data:text/vcard;charset=utf-8," + encodeURIComponent(vcard);
-    } else {
-      var a = el("a", { download: nomeFile + ".vcf" });
-      a.href = URL.createObjectURL(new Blob([vcard], { type: "text/vcard" }));
-      document.body.appendChild(a); a.click(); a.remove();
+    // Il contatto viene rimandato dal server come vero file di contatto (text/vcard):
+    // iPhone apre subito la scheda "Nuovo contatto", Android lo scarica e lo apre nella rubrica.
+    // Il server lo restituisce e basta: non lo salva.
+    var f = el("form", { method: "POST", action: "vcf" });
+    var campo = el("input", { type: "hidden", name: "v" }); campo.value = vcard;
+    f.appendChild(campo); document.body.appendChild(f); f.submit(); f.remove();
+    if (/Android/i.test(navigator.userAgent)) {
+      nota.textContent = T.android; nota.style.display = "block";
     }
   };
+  var nota = el("div", { "class": "nota" }); nota.style.display = "none";
   pagina.appendChild(salva);
+  pagina.appendChild(nota);
 
   // Voci cliccabili
   var STILI = {
