@@ -47,7 +47,7 @@
 <body>
 <main id="pagina"></main>
 <script>
-(function () {
+(async function () {
   var it = (navigator.language || "it").toLowerCase().indexOf("it") === 0;
   var T = it ? {
     salva: "💾 Aggiungi ai contatti", ricambia: "🤝 Ricambia lo scambio",
@@ -87,8 +87,25 @@
     return e;
   }
 
+  // Colori dei temi: gli stessi dell'app (TemaBiglietto.kt).
+  var TEMI = [["#4F46E5","#7C3AED","#EC4899"], ["#0EA5E9","#2563EB","#1E3A8A"], ["#F59E0B","#F97316","#E11D48"],
+              ["#10B981","#059669","#065F46"], ["#334155","#1E293B","#0F172A"], ["#1C1917","#44403C","#B45309"]];
+  var tema = 0;
+  // Formato 2: "2" + tema + vCard compressa (deflate) in base64url. Formato 1: vCard in base64url.
+  async function leggi(h) {
+    if (h.charAt(0) === "2" && h.length > 2) {
+      tema = parseInt(h.charAt(1), 10) || 0;
+      var s = h.slice(2).replace(/-/g, "+").replace(/_/g, "/");
+      while (s.length % 4) s += "=";
+      var bin = atob(s), byte = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) byte[i] = bin.charCodeAt(i);
+      var flusso = new Blob([byte]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      return await new Response(flusso).text();
+    }
+    return decodifica(h);
+  }
   var vcard;
-  try { vcard = decodifica(location.hash.slice(1)); } catch (e) { vcard = ""; }
+  try { vcard = await leggi(location.hash.slice(1)); } catch (e) { vcard = ""; }
   if (vcard.indexOf("BEGIN:VCARD") !== 0) {
     pagina.appendChild(el("div", { "class": "errore" }, T.errore));
     return;
@@ -113,7 +130,10 @@
   document.title = c.nome || document.title;
 
   // Biglietto
+  var colori = TEMI[tema] || TEMI[0];
   var b = el("div", { "class": "biglietto" });
+  b.style.background = "linear-gradient(135deg," + colori.join(",") + ")";
+  b.style.boxShadow = "0 12px 30px " + colori[0] + "59";
   b.appendChild(el("h1", null, c.nome || ""));
   var sotto = [c.ruolo, c.azienda].filter(Boolean).join(" · ");
   if (sotto) b.appendChild(el("div", { "class": "sotto" }, sotto));
@@ -121,6 +141,7 @@
 
   // Aggiungi ai contatti
   var salva = el("button", { "class": "salva" }, T.salva);
+  salva.style.background = colori[tema === 0 ? 2 : 1];
   salva.onclick = function () {
     // Il contatto viene rimandato dal server come vero file di contatto (text/vcard):
     // iPhone apre subito la scheda "Nuovo contatto", Android lo scarica e lo apre nella rubrica.
