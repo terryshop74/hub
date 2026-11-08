@@ -14,3 +14,9 @@ password esiste solo sul server e non viene mai toccato né caricato qui.
 | Metodo | Percorso      | Cosa fa                                  |
 |--------|---------------|------------------------------------------|
 | GET    | `/api/stato`  | Dice se l'hub è attivo e se il database è collegato |
+
+## Pagine
+
+| Percorso | Cosa fa |
+|---|---|
+| `/b#<dati>` | Biglietto da visita dell'app **Biglietto NFC**: chi avvicina il telefono (Android o iPhone, senza app) vede il biglietto e lo salva in rubrica. I dati stanno nel link dopo `#`: non arrivano al server e non vengono salvati. |

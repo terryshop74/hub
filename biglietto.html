@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Biglietto da visita</title>
+<!--
+  Pagina del Biglietto NFC (app Android di TERRYSHOP74 S.r.l.).
+  I dati del biglietto viaggiano DENTRO il link, dopo il simbolo #:
+  il browser non li manda mai al server e questa pagina non li salva.
+-->
+<style>
+  :root { --indaco:#4F46E5; --viola:#7C3AED; --rosa:#EC4899; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         background:#F5F3FF; color:#1f1b2e; }
+  main { max-width:480px; margin:0 auto; padding:20px 16px 40px; }
+  .biglietto { background:linear-gradient(135deg,var(--indaco),var(--viola),var(--rosa));
+               color:#fff; border-radius:26px; padding:24px; box-shadow:0 12px 30px rgba(79,70,229,.35); }
+  .biglietto h1 { margin:0; font-size:28px; line-height:1.15; }
+  .biglietto .sotto { margin-top:6px; font-size:17px; opacity:.92; }
+  .salva { display:block; width:100%; margin:18px 0 8px; padding:18px; border:0; border-radius:18px;
+           background:var(--rosa); color:#fff; font-size:19px; font-weight:700; cursor:pointer; }
+  .voci { display:grid; gap:10px; margin-top:12px; }
+  .voce { display:flex; align-items:center; gap:12px; background:#fff; border-radius:18px; padding:12px 14px;
+          text-decoration:none; color:inherit; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+  .bollino { flex:0 0 44px; height:44px; border-radius:50%; display:flex; align-items:center;
+             justify-content:center; font-size:21px; }
+  .voce b { display:block; font-size:13px; color:#6b6880; font-weight:600; }
+  .voce span { font-size:16px; word-break:break-word; }
+  .ricambia { margin-top:26px; background:#EDE9FE; border-radius:22px; padding:18px; }
+  .ricambia h2 { margin:0 0 6px; font-size:19px; color:var(--indaco); }
+  .ricambia p { margin:0 0 12px; font-size:15px; color:#4b4760; }
+  .ricambia input { width:100%; padding:14px; margin-bottom:10px; border:1px solid #c7c2e0; border-radius:14px;
+                    font-size:17px; background:#fff; }
+  .pulsanti { display:flex; gap:10px; }
+  .pulsanti button { flex:1; padding:14px; border:0; border-radius:14px; font-size:16px; font-weight:700;
+                     color:#fff; cursor:pointer; }
+  .wa { background:#25D366; } .sms { background:var(--indaco); }
+  footer { margin-top:28px; text-align:center; font-size:13px; color:#6b6880; }
+  footer a { color:var(--indaco); }
+  .errore { text-align:center; padding:60px 20px; font-size:18px; }
+</style>
+</head>
+<body>
+<main id="pagina"></main>
+<script>
+(function () {
+  var it = (navigator.language || "it").toLowerCase().indexOf("it") === 0;
+  var T = it ? {
+    salva: "💾 Aggiungi ai contatti", ricambia: "🤝 Ricambia lo scambio",
+    ricambia_t: "Lascia il tuo nome e numero: si apre un messaggio già pronto da inviare a ",
+    nome: "Il tuo nome", tel: "Il tuo numero", wa: "WhatsApp", sms: "SMS",
+    msg: "Ciao, sono {n}. Il mio numero è {t}. Ci siamo scambiati il biglietto da visita 👋",
+    errore: "Biglietto non leggibile: chiedi di riavvicinare il telefono o di mostrarti il QR code.",
+    privacy: "I dati sono contenuti nel link: questa pagina non li salva.",
+    creato: "Biglietto creato con", manca: "Scrivi nome e numero"
+  } : {
+    salva: "💾 Add to contacts", ricambia: "🤝 Swap back",
+    ricambia_t: "Leave your name and number: a ready-made message opens, to send to ",
+    nome: "Your name", tel: "Your number", wa: "WhatsApp", sms: "SMS",
+    msg: "Hi, I'm {n}. My number is {t}. We just swapped business cards 👋",
+    errore: "Card not readable: ask to tap the phone again or to show you the QR code.",
+    privacy: "The details are inside the link: this page does not store them.",
+    creato: "Card made with", manca: "Type your name and number"
+  };
+  var pagina = document.getElementById("pagina");
+
+  function decodifica(s) {
+    s = s.replace(/-/g, "+").replace(/_/g, "/");
+    while (s.length % 4) s += "=";
+    var bin = atob(s), byte = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) byte[i] = bin.charCodeAt(i);
+    return new TextDecoder("utf-8").decode(byte);
+  }
+  function togli(v) {
+    return v.replace(/\\n/gi, "\n").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\").trim();
+  }
+  function el(tag, attr, testo) {
+    var e = document.createElement(tag);
+    for (var k in (attr || {})) e.setAttribute(k, attr[k]);
+    if (testo != null) e.textContent = testo;
+    return e;
+  }
+
+  var vcard;
+  try { vcard = decodifica(location.hash.slice(1)); } catch (e) { vcard = ""; }
+  if (vcard.indexOf("BEGIN:VCARD") !== 0) {
+    pagina.appendChild(el("div", { "class": "errore" }, T.errore));
+    return;
+  }
+
+  // Lettura della vCard
+  var c = { tel: [], email: [], url: [] };
+  vcard.replace(/\r\n[ \t]/g, "").split(/\r?\n/).forEach(function (r) {
+    var i = r.indexOf(":"); if (i < 0) return;
+    var testa = r.slice(0, i), v = r.slice(i + 1);
+    var chiave = testa.split(";")[0].toUpperCase();
+    var tipo = (testa.match(/TYPE=([^;:]+)/i) || [])[1];
+    if (chiave === "FN") c.nome = togli(v);
+    else if (chiave === "ORG") c.azienda = togli(v);
+    else if (chiave === "TITLE") c.ruolo = togli(v);
+    else if (chiave === "TEL") c.tel.push(togli(v));
+    else if (chiave === "EMAIL") c.email.push(togli(v));
+    else if (chiave === "ADR") c.indirizzo = v.split(";").map(togli).filter(Boolean).join(", ");
+    else if (chiave === "URL") c.url.push({ tipo: (tipo || "web").toLowerCase(), link: togli(v) });
+    else if (chiave === "NOTE") c.nota = togli(v);
+  });
+  document.title = c.nome || document.title;
+
+  // Biglietto
+  var b = el("div", { "class": "biglietto" });
+  b.appendChild(el("h1", null, c.nome || ""));
+  var sotto = [c.ruolo, c.azienda].filter(Boolean).join(" · ");
+  if (sotto) b.appendChild(el("div", { "class": "sotto" }, sotto));
+  pagina.appendChild(b);
+
+  // Aggiungi ai contatti
+  var salva = el("button", { "class": "salva" }, T.salva);
+  salva.onclick = function () {
+    var nomeFile = (c.nome || "contatto").replace(/[^\w\- ]+/g, "").trim() || "contatto";
+    if (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) {
+      // Su iPhone Safari apre direttamente la scheda "Nuovo contatto".
+      location.href = "data:text/vcard;charset=utf-8," + encodeURIComponent(vcard);
+    } else {
+      var a = el("a", { download: nomeFile + ".vcf" });
+      a.href = URL.createObjectURL(new Blob([vcard], { type: "text/vcard" }));
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+  };
+  pagina.appendChild(salva);
+
+  // Voci cliccabili
+  var STILI = {
+    whatsapp: ["💬", "#25D366", "WhatsApp"], telegram: ["✈️", "#229ED9", "Telegram"],
+    instagram: ["📸", "#E1306C", "Instagram"], facebook: ["👍", "#1877F2", "Facebook"],
+    tiktok: ["🎵", "#111111", "TikTok"], linkedin: ["👔", "#0A66C2", "LinkedIn"],
+    x: ["✖️", "#222222", "X"], youtube: ["▶️", "#FF0000", "YouTube"], web: ["🌐", "#3B82F6", "Web"]
+  };
+  var voci = el("div", { "class": "voci" });
+  function voce(emoji, colore, titolo, testo, link) {
+    var a = el(link ? "a" : "div", { "class": "voce" });
+    if (link) { a.href = link; if (/^https?:/.test(link)) a.target = "_blank"; }
+    var bol = el("div", { "class": "bollino" }, emoji); bol.style.background = colore;
+    var t = el("div"); t.appendChild(el("b", null, titolo)); t.appendChild(el("span", null, testo));
+    a.appendChild(bol); a.appendChild(t); voci.appendChild(a);
+  }
+  c.tel.forEach(function (t) { voce("📞", "#22C55E", it ? "Telefono" : "Phone", t, "tel:" + t.replace(/\s/g, "")); });
+  c.email.forEach(function (m) { voce("✉️", "#F59E0B", "Email", m, "mailto:" + m); });
+  c.url.forEach(function (u) {
+    var s = STILI[u.tipo] || STILI.web;
+    voce(s[0], s[1], s[2], u.link.replace(/^https?:\/\/(www\.)?/, ""), u.link);
+  });
+  if (c.indirizzo) voce("📍", "#EF4444", it ? "Indirizzo" : "Address", c.indirizzo,
+    "https://maps.google.com/?q=" + encodeURIComponent(c.indirizzo));
+  if (c.nota) voce("🗨️", "#07C160", it ? "Nota" : "Note", c.nota, null);
+  pagina.appendChild(voci);
+
+  // Ricambia: anche chi non ha l'app manda i suoi dati, con un messaggio già pronto
+  var wa = c.url.filter(function (u) { return u.tipo === "whatsapp"; })[0];
+  var numero = wa ? wa.link.replace(/\D/g, "") : (c.tel[0] || "").replace(/[^\d+]/g, "");
+  if (numero) {
+    var r = el("div", { "class": "ricambia" });
+    r.appendChild(el("h2", null, T.ricambia));
+    r.appendChild(el("p", null, T.ricambia_t + (c.nome || "") + "."));
+    var inNome = el("input", { placeholder: T.nome, autocomplete: "name" });
+    var inTel = el("input", { placeholder: T.tel, type: "tel", autocomplete: "tel" });
+    r.appendChild(inNome); r.appendChild(inTel);
+    var p = el("div", { "class": "pulsanti" });
+    function testo() {
+      if (!inNome.value.trim() || !inTel.value.trim()) { alert(T.manca); return null; }
+      return T.msg.replace("{n}", inNome.value.trim()).replace("{t}", inTel.value.trim());
+    }
+    var bWa = el("button", { "class": "wa" }, T.wa);
+    bWa.onclick = function () {
+      var m = testo(); if (m) location.href = "https://wa.me/" + numero.replace(/\D/g, "") + "?text=" + encodeURIComponent(m);
+    };
+    var bSms = el("button", { "class": "sms" }, T.sms);
+    bSms.onclick = function () {
+      var m = testo(); if (m) location.href = "sms:" + (c.tel[0] || numero).replace(/\s/g, "") + "?&body=" + encodeURIComponent(m);
+    };
+    p.appendChild(bWa); p.appendChild(bSms); r.appendChild(p);
+    pagina.appendChild(r);
+  }
+
+  var f = el("footer");
+  f.appendChild(el("div", null, T.privacy));
+  var riga = el("div"); riga.style.marginTop = "6px";
+  riga.appendChild(document.createTextNode(T.creato + " "));
+  riga.appendChild(el("a", { href: "https://apparea.terryshop74.it", target: "_blank" }, "Biglietto NFC · AppArea"));
+  f.appendChild(riga);
+  pagina.appendChild(f);
+})();
+</script>
+</body>
+</html>
