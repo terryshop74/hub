@@ -37,6 +37,9 @@
   .pulsanti { display:flex; gap:10px; }
   .pulsanti button { flex:1; padding:14px; border:0; border-radius:14px; font-size:16px; font-weight:700;
                      color:#fff; cursor:pointer; }
+  .contatto { width:100%; margin-top:10px; padding:14px; border:2px solid var(--indaco); border-radius:14px;
+              background:#fff; color:var(--indaco); font-size:16px; font-weight:700; cursor:pointer; }
+  .ricambia .piccolo { font-size:13px; margin:8px 0 0; }
   .wa { background:#25D366; } .sms { background:var(--indaco); }
   .nota { background:#FEF3C7; color:#78350F; border-radius:14px; padding:12px 14px; font-size:15px; margin-bottom:8px; }
   footer { margin-top:28px; text-align:center; font-size:13px; color:#6b6880; }
@@ -51,18 +54,26 @@
   var it = (navigator.language || "it").toLowerCase().indexOf("it") === 0;
   var T = it ? {
     salva: "💾 Aggiungi ai contatti", ricambia: "🤝 Ricambia lo scambio",
-    ricambia_t: "Lascia il tuo nome e numero: si apre un messaggio già pronto da inviare a ",
+    ricambia_t: "Scrivi i tuoi dati: si apre un messaggio già pronto, con il tuo biglietto, da inviare a ",
     nome: "Il tuo nome", tel: "Il tuo numero", wa: "WhatsApp", sms: "SMS",
-    msg: "Ciao, sono {n}. Il mio numero è {t}. Ci siamo scambiati il biglietto da visita 👋",
+    msg: "Ciao, sono {n} 👋 Ci siamo scambiati il biglietto da visita. Il mio numero è {t}, qui c'è il mio biglietto da salvare in rubrica: {l}",
+    email: "La tua email (facoltativa)", azienda: "La tua azienda (facoltativa)",
+    come_contatto: "📇 Invia come contatto",
+    come_contatto_t: "Manda la tua scheda contatto con WhatsApp, SMS o un'altra app: scegli tu a chi inviarla.",
+    contatto_scaricato: "Il contatto è stato scaricato: invialo dalla cartella Download.",
     errore: "Biglietto non leggibile: chiedi di riavvicinare il telefono o di mostrarti il QR code.",
     privacy: "I dati sono contenuti nel link: questa pagina non li salva.",
     creato: "Biglietto creato con", manca: "Scrivi nome e numero",
     android: "📥 Se non si apre da solo, tocca «Apri» sul file scaricato (oppure aprilo dai Download): la rubrica ti chiede dove salvare il contatto."
   } : {
     salva: "💾 Add to contacts", ricambia: "🤝 Swap back",
-    ricambia_t: "Leave your name and number: a ready-made message opens, to send to ",
+    ricambia_t: "Type your details: a ready-made message with your card opens, to send to ",
     nome: "Your name", tel: "Your number", wa: "WhatsApp", sms: "SMS",
-    msg: "Hi, I'm {n}. My number is {t}. We just swapped business cards 👋",
+    msg: "Hi, I'm {n} 👋 We just swapped business cards. My number is {t}, here is my card to save: {l}",
+    email: "Your email (optional)", azienda: "Your company (optional)",
+    come_contatto: "📇 Send as contact",
+    come_contatto_t: "Send your contact card with WhatsApp, SMS or another app: you choose who to send it to.",
+    contatto_scaricato: "The contact has been downloaded: send it from your Downloads folder.",
     errore: "Card not readable: ask to tap the phone again or to show you the QR code.",
     privacy: "The details are inside the link: this page does not store them.",
     creato: "Card made with", manca: "Type your name and number",
@@ -183,7 +194,9 @@
   if (c.nota) voce("🗨️", "#07C160", it ? "Nota" : "Note", c.nota, null);
   pagina.appendChild(voci);
 
-  // Ricambia: anche chi non ha l'app manda i suoi dati, con un messaggio già pronto
+  // Ricambia: anche chi non ha l'app manda il suo biglietto, senza installare nulla.
+  // 1) WhatsApp/SMS già indirizzati al proprietario, con il link al biglietto di chi risponde;
+  // 2) "Invia come contatto": vera scheda contatto (.vcf) con la condivisione del telefono.
   var wa = c.url.filter(function (u) { return u.tipo === "whatsapp"; })[0];
   var numero = wa ? wa.link.replace(/\D/g, "") : (c.tel[0] || "").replace(/[^\d+]/g, "");
   if (numero) {
@@ -192,21 +205,69 @@
     r.appendChild(el("p", null, T.ricambia_t + (c.nome || "") + "."));
     var inNome = el("input", { placeholder: T.nome, autocomplete: "name" });
     var inTel = el("input", { placeholder: T.tel, type: "tel", autocomplete: "tel" });
-    r.appendChild(inNome); r.appendChild(inTel);
-    var p = el("div", { "class": "pulsanti" });
-    function testo() {
-      if (!inNome.value.trim() || !inTel.value.trim()) { alert(T.manca); return null; }
-      return T.msg.replace("{n}", inNome.value.trim()).replace("{t}", inTel.value.trim());
+    var inMail = el("input", { placeholder: T.email, type: "email", autocomplete: "email" });
+    var inAz = el("input", { placeholder: T.azienda, autocomplete: "organization" });
+    [inNome, inTel, inMail, inAz].forEach(function (i) { r.appendChild(i); });
+
+    function esc(v) { return v.replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\n/g, "\\n"); }
+    function mioVcard() {
+      var n = inNome.value.trim(), t = inTel.value.trim();
+      if (!n || !t) { alert(T.manca); return null; }
+      var parti = n.split(/\s+/), cognome = parti.length > 1 ? parti.pop() : "", nome = parti.join(" ");
+      var v = ["BEGIN:VCARD", "VERSION:3.0", "N:" + esc(cognome) + ";" + esc(nome) + ";;;", "FN:" + esc(n)];
+      if (inAz.value.trim()) v.push("ORG:" + esc(inAz.value.trim()));
+      v.push("TEL;TYPE=CELL:" + esc(t));
+      if (inMail.value.trim()) v.push("EMAIL;TYPE=INTERNET:" + esc(inMail.value.trim()));
+      v.push("END:VCARD");
+      return { nome: n, tel: t, vcard: v.join("\r\n") };
     }
+    function b64(byte) {
+      var s = ""; for (var i = 0; i < byte.length; i++) s += String.fromCharCode(byte[i]);
+      return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    }
+    // Link al biglietto di chi risponde: stesso formato dell'app (compresso se il browser lo permette).
+    async function linkDi(vcard) {
+      var base = location.href.split("#")[0];
+      var dati = new TextEncoder().encode(vcard);
+      try {
+        var flusso = new Blob([dati]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+        return base + "#20" + b64(new Uint8Array(await new Response(flusso).arrayBuffer()));
+      } catch (e) {
+        return base + "#" + b64(dati);
+      }
+    }
+    async function messaggio() {
+      var io = mioVcard(); if (!io) return null;
+      return T.msg.replace("{n}", io.nome).replace("{t}", io.tel).replace("{l}", await linkDi(io.vcard));
+    }
+
+    var p = el("div", { "class": "pulsanti" });
     var bWa = el("button", { "class": "wa" }, T.wa);
-    bWa.onclick = function () {
-      var m = testo(); if (m) location.href = "https://wa.me/" + numero.replace(/\D/g, "") + "?text=" + encodeURIComponent(m);
+    bWa.onclick = async function () {
+      var m = await messaggio(); if (m) location.href = "https://wa.me/" + numero.replace(/\D/g, "") + "?text=" + encodeURIComponent(m);
     };
     var bSms = el("button", { "class": "sms" }, T.sms);
-    bSms.onclick = function () {
-      var m = testo(); if (m) location.href = "sms:" + (c.tel[0] || numero).replace(/\s/g, "") + "?&body=" + encodeURIComponent(m);
+    bSms.onclick = async function () {
+      var m = await messaggio(); if (m) location.href = "sms:" + (c.tel[0] || numero).replace(/\s/g, "") + "?&body=" + encodeURIComponent(m);
     };
     p.appendChild(bWa); p.appendChild(bSms); r.appendChild(p);
+
+    var bCont = el("button", { "class": "contatto" }, T.come_contatto);
+    bCont.onclick = function () {
+      var io = mioVcard(); if (!io) return;
+      var nomeFile = (io.nome.replace(/[^\w\- ]+/g, "").trim() || "contatto") + ".vcf";
+      var file = new File([io.vcard], nomeFile, { type: "text/vcard" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: io.nome }).catch(function () {});
+      } else {
+        var a = el("a", { download: nomeFile });
+        a.href = URL.createObjectURL(file);
+        document.body.appendChild(a); a.click(); a.remove();
+        alert(T.contatto_scaricato);
+      }
+    };
+    r.appendChild(bCont);
+    r.appendChild(el("p", { "class": "piccolo" }, T.come_contatto_t));
     pagina.appendChild(r);
   }
 
