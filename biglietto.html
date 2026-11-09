@@ -41,6 +41,12 @@
               background:#fff; color:var(--indaco); font-size:16px; font-weight:700; cursor:pointer; }
   .ricambia .piccolo { font-size:13px; margin:8px 0 0; }
   .wa { background:#25D366; } .sms { background:var(--indaco); }
+  .recensione { display:block; text-align:center; text-decoration:none; background:#F59E0B !important; }
+  .vai { display:block; text-align:center; text-decoration:none; }
+  .benvenuto { text-align:center; padding:40px 24px; }
+  .benvenuto h1 { font-size:32px; }
+  .benvenuto .nfc { font-size:56px; margin-bottom:10px; }
+  .conto { text-align:center; color:#6b6880; font-size:15px; }
   .nota { background:#FEF3C7; color:#78350F; border-radius:14px; padding:12px 14px; font-size:15px; margin-bottom:8px; }
   footer { margin-top:28px; text-align:center; font-size:13px; color:#6b6880; }
   footer a { color:var(--indaco); }
@@ -64,6 +70,7 @@
     errore: "Biglietto non leggibile: chiedi di riavvicinare il telefono o di mostrarti il QR code.",
     privacy: "I dati sono contenuti nel link: questa pagina non li salva.",
     creato: "Biglietto creato con", manca: "Scrivi nome e numero",
+    recensione: "⭐ Lascia una recensione", apri: "Apri", apre_tra: "Si apre tra {s}…", tavolo: "Tavolo",
     android: "📥 Se non si apre da solo, tocca «Apri» sul file scaricato (oppure aprilo dai Download): la rubrica ti chiede dove salvare il contatto."
   } : {
     salva: "💾 Add to contacts", ricambia: "🤝 Swap back",
@@ -77,6 +84,7 @@
     errore: "Card not readable: ask to tap the phone again or to show you the QR code.",
     privacy: "The details are inside the link: this page does not store them.",
     creato: "Card made with", manca: "Type your name and number",
+    recensione: "⭐ Leave a review", apri: "Open", apre_tra: "Opening in {s}…", tavolo: "Table",
     android: "📥 If it does not open by itself, tap «Open» on the downloaded file (or open it from Downloads): your contacts app asks where to save it."
   };
   var pagina = document.getElementById("pagina");
@@ -115,6 +123,53 @@
     }
     return decodifica(h);
   }
+  // Pagina di benvenuto delle tessere programmabili: "L" + tema + (link, titolo, tavolo) compressi.
+  async function scomprimi(testo) {
+    var s = testo.replace(/-/g, "+").replace(/_/g, "/");
+    while (s.length % 4) s += "=";
+    var bin = atob(s), byte = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) byte[i] = bin.charCodeAt(i);
+    var flusso = new Blob([byte]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return await new Response(flusso).text();
+  }
+  var frammento = location.hash.slice(1);
+  if (frammento.charAt(0) === "L" && frammento.length > 2) {
+    try {
+      var temaL = parseInt(frammento.charAt(1), 10) || 0;
+      var parti = (await scomprimi(frammento.slice(2))).split("\u001f");
+      var dest = parti[0], titoloL = parti[1] || "", tavoloL = parti[2] || "";
+      if (!/^https?:\/\//i.test(dest)) throw new Error("link");
+      if (tavoloL) {
+        var cut = dest.indexOf("#"), base = cut >= 0 ? dest.slice(0, cut) : dest, coda = cut >= 0 ? dest.slice(cut) : "";
+        dest = base + (base.indexOf("?") >= 0 ? "&" : "?") + "tavolo=" + encodeURIComponent(tavoloL) + coda;
+      }
+      var col = TEMI[temaL] || TEMI[0];
+      document.title = titoloL || document.title;
+      var box = el("div", { "class": "biglietto benvenuto" });
+      box.style.background = "linear-gradient(135deg," + col.join(",") + ")";
+      box.appendChild(el("div", { "class": "nfc" }, "📲"));
+      box.appendChild(el("h1", null, titoloL || dest.replace(/^https?:\/\/(www\.)?/, "")));
+      if (tavoloL) box.appendChild(el("div", { "class": "sotto" }, T.tavolo + " " + tavoloL));
+      pagina.appendChild(box);
+      var vai = el("a", { "class": "salva vai", href: dest }, T.apri);
+      vai.style.background = col[col.length - 1];
+      pagina.appendChild(vai);
+      var conto = el("p", { "class": "conto" }, ""); pagina.appendChild(conto);
+      var sec = 3;
+      conto.textContent = T.apre_tra.replace("{s}", sec);
+      var giro = setInterval(function () {
+        sec--;
+        if (sec <= 0) { clearInterval(giro); location.href = dest; return; }
+        conto.textContent = T.apre_tra.replace("{s}", sec);
+      }, 1000);
+      var f2 = el("footer"); var a2 = el("a", { href: "https://apparea.terryshop74.it", target: "_blank" }, "Biglietto NFC · AppArea");
+      f2.appendChild(document.createTextNode(T.creato + " ")); f2.appendChild(a2); pagina.appendChild(f2);
+    } catch (e) {
+      pagina.appendChild(el("div", { "class": "errore" }, T.errore));
+    }
+    return;
+  }
+
   var vcard;
   try { vcard = await leggi(location.hash.slice(1)); } catch (e) { vcard = ""; }
   if (vcard.indexOf("BEGIN:VCARD") !== 0) {
@@ -167,6 +222,10 @@
   var nota = el("div", { "class": "nota" }); nota.style.display = "none";
   pagina.appendChild(salva);
   pagina.appendChild(nota);
+  c.url.filter(function (u) { return u.tipo === "recensione"; }).forEach(function (u) {
+    var rec = el("a", { "class": "salva recensione", href: u.link, target: "_blank" }, T.recensione);
+    pagina.appendChild(rec);
+  });
 
   // Voci cliccabili
   var STILI = {
@@ -185,7 +244,7 @@
   }
   c.tel.forEach(function (t) { voce("📞", "#22C55E", it ? "Telefono" : "Phone", t, "tel:" + t.replace(/\s/g, "")); });
   c.email.forEach(function (m) { voce("✉️", "#F59E0B", "Email", m, "mailto:" + m); });
-  c.url.forEach(function (u) {
+  c.url.filter(function (u) { return u.tipo !== "recensione"; }).forEach(function (u) {
     var s = STILI[u.tipo] || STILI.web;
     voce(s[0], s[1], s[2], u.link.replace(/^https?:\/\/(www\.)?/, ""), u.link);
   });
